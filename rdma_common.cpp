@@ -398,7 +398,7 @@ doca_error_t register_rdma_common_params(void)
     return DOCA_SUCCESS;
 }
 
-td::string devinfo_get_ibdev_name(const doca_devinfo *devinfo) {
+std::string devinfo_get_ibdev_name(const doca_devinfo *devinfo) {
     char buf[DOCA_DEVINFO_IBDEV_NAME_SIZE];
     return (DOCA_SUCCESS == doca_devinfo_get_ibdev_name(
             devinfo, buf, DOCA_DEVINFO_IBDEV_NAME_SIZE))
