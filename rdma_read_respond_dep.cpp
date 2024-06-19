@@ -192,7 +192,7 @@ doca_error_t rdma_read_responder(struct rdma_config *cfg)
             .tv_nsec = SLEEP_IN_NANOS,
     };
 
-    memcpy(cfg->device_name, "mlx5_1", sizeof("mlx5_1"));
+//    memcpy(cfg->device_name, "mlx5_1", sizeof("mlx5_1"));
 
     /* Allocating resources */
     result = allocate_rdma_resources(cfg,
