@@ -10,6 +10,8 @@
 #include <doca_log.h>
 #include <doca_error.h>
 #include <doca_argp.h>
+#include <string>
+#include <vector>
 
 #include "rdma_common.h"
 
@@ -396,6 +398,81 @@ doca_error_t register_rdma_common_params(void)
     return DOCA_SUCCESS;
 }
 
+td::string devinfo_get_ibdev_name(const doca_devinfo *devinfo) {
+    char buf[DOCA_DEVINFO_IBDEV_NAME_SIZE];
+    return (DOCA_SUCCESS == doca_devinfo_get_ibdev_name(
+            devinfo, buf, DOCA_DEVINFO_IBDEV_NAME_SIZE))
+           ? buf
+           : "";
+}
+
+std::string devinfo_get_iface_name(const doca_devinfo *devinfo) {
+    char buf[DOCA_DEVINFO_IFACE_NAME_SIZE];
+    return (DOCA_SUCCESS == doca_devinfo_get_iface_name(
+            devinfo, buf, DOCA_DEVINFO_IFACE_NAME_SIZE))
+           ? buf
+           : "";
+}
+
+std::string mac2str(void *ptr) {
+    char buf[32], *p = buf;
+    auto mac = (uint8_t *)ptr;
+    for (int i = 0; i < DOCA_DEVINFO_MAC_ADDR_SIZE; ++i)
+        p += sprintf(p, "%02x:", mac[i]);
+    *--p = '\0';
+    return buf;
+}
+
+std::string devinfo_get_mac_addr(const doca_devinfo *devinfo) {
+    uint8_t buf[DOCA_DEVINFO_MAC_ADDR_SIZE];
+    return (DOCA_SUCCESS ==
+            doca_devinfo_get_mac_addr(devinfo, buf, DOCA_DEVINFO_MAC_ADDR_SIZE))
+           ? mac2str(buf)
+           : "";
+}
+
+std::string ip2str(void *ptr) {
+    char buf[32], *p = buf;
+    auto ip = (uint8_t *)ptr;
+    for (int i = 0; i < DOCA_DEVINFO_IPV4_ADDR_SIZE; ++i)
+        p += sprintf(p, "%u.", ip[i]);
+    *--p = '\0';
+    return buf;
+}
+
+std::string devinfo_get_ipv4_addr(const doca_devinfo *devinfo) {
+    uint8_t buf[DOCA_DEVINFO_IPV4_ADDR_SIZE];
+    return (DOCA_SUCCESS ==
+            doca_devinfo_get_ipv4_addr(devinfo, buf, DOCA_DEVINFO_IPV4_ADDR_SIZE))
+           ? ip2str(buf)
+           : "";
+}
+
+std::string devinfo_get_pci_addr(const doca_devinfo *devinfo) {
+    char buf[DOCA_DEVINFO_PCI_ADDR_SIZE];
+    return (DOCA_SUCCESS == doca_devinfo_get_pci_addr_str(devinfo, buf)) ? buf
+                                                                         : "";
+}
+
+int devinfo_get_lid(const doca_devinfo *devinfo) {
+    uint16_t lid;
+    return (DOCA_SUCCESS == doca_devinfo_get_lid(devinfo, &lid)) ? lid : -1;
+}
+
+std::string devinfo_get_lid_str(const doca_devinfo *devinfo) {
+    int lid = devinfo_get_lid(devinfo);
+    return lid != -1 ? std::to_string(lid) : "";
+}
+
+typedef std::string (*DevinfoFunc)(const doca_devinfo*);
+
+std::vector<DevinfoFunc> devinfo_get_funcs = {
+        devinfo_get_ibdev_name, devinfo_get_iface_name,
+        devinfo_get_mac_addr, // RoCE only
+        devinfo_get_ipv4_addr,  devinfo_get_pci_addr,
+        devinfo_get_lid_str, // IB only
+};
+
 /*
  * Open DOCA device
  *
@@ -404,46 +481,69 @@ doca_error_t register_rdma_common_params(void)
  * @doca_device [out]: An allocated DOCA device on success and NULL otherwise
  * @return: DOCA_SUCCESS on success and DOCA_ERROR otherwise
  */
-static doca_error_t open_doca_device(const char *device_name, task_check func, struct doca_dev **doca_device)
+static doca_error_t open_dpa_device(std::string device_name, struct doca_dev **doca_device)
 {
-    struct doca_devinfo **dev_list;
-    uint32_t nb_devs = 0;
-    doca_error_t result;
-    char ibdev_name[DOCA_DEVINFO_IBDEV_NAME_SIZE] = {0};
-    uint32_t i = 0;
-
-    result = doca_devinfo_create_list(&dev_list, &nb_devs);
-    if (result != DOCA_SUCCESS) {
-        DOCA_LOG_ERR("Failed to load DOCA devices list: %s", doca_error_get_descr(result));
-        return result;
-    }
-
-    /* Search device with same dev name*/
-    for (i = 0; i < nb_devs; i++) {
-        result = doca_devinfo_get_ibdev_name(dev_list[i], ibdev_name, sizeof(ibdev_name));
-        if (result != DOCA_SUCCESS ||
-            (strlen(device_name) != 0 && strncmp(device_name, ibdev_name, DOCA_DEVINFO_IBDEV_NAME_SIZE) != 0))
-            continue;
-        /* If any special capabilities are needed */
-        if (func != NULL && func(dev_list[i]) != DOCA_SUCCESS)
-            continue;
-        result = doca_dev_open(dev_list[i], doca_device);
-        if (result != DOCA_SUCCESS) {
-            DOCA_LOG_ERR("Failed to open DOCA device: %s", doca_error_get_descr(result));
-            goto out;
+//    struct doca_devinfo **dev_list;
+//    uint32_t nb_devs = 0;
+//    doca_error_t result;
+//    char ibdev_name[DOCA_DEVINFO_IBDEV_NAME_SIZE] = {0};
+//    uint32_t i = 0;
+//
+//    result = doca_devinfo_create_list(&dev_list, &nb_devs);
+//    if (result != DOCA_SUCCESS) {
+//        DOCA_LOG_ERR("Failed to load DOCA devices list: %s", doca_error_get_descr(result));
+//        return result;
+//    }
+//
+//    /* Search device with same dev name*/
+//    for (i = 0; i < nb_devs; i++) {
+//        result = doca_dpa_cap_is_supported(dev_list[i]);
+//        if (result != DOCA_SUCCESS)
+//            continue;
+//        result = doca_devinfo_get_ibdev_name(dev_list[i], ibdev_name, sizeof(ibdev_name));
+//        if (result != DOCA_SUCCESS ||
+//            (strcmp(device_name, DEVICE_DEFAULT_NAME) != 0 && strcmp(device_name, ibdev_name) != 0))
+//            continue;
+//        result = doca_dev_open(dev_list[i], doca_device);
+//        if (result != DOCA_SUCCESS) {
+//            doca_devinfo_destroy_list(dev_list);
+//            DOCA_LOG_ERR("Failed to open DOCA device: %s", doca_error_get_descr(result));
+//            return result;
+//        }
+//        break;
+//    }
+//
+//    doca_devinfo_destroy_list(dev_list);
+//
+//    if (*doca_device == NULL) {
+//        DOCA_LOG_ERR("Couldn't get DOCA device");
+//        return DOCA_ERROR_NOT_FOUND;
+//    }
+//
+//    return result;
+    doca_devinfo **dev_list, *dev_info = nullptr;
+    uint32_t nb_devs;
+    doca_devinfo_create_list(&dev_list, &nb_devs);
+    for (uint32_t i = 0; i < nb_devs; ++i) {
+        bool found = false;
+        for (int j = 0; j < devinfo_get_funcs.size(); ++j) {
+            if (devinfo_get_funcs[j](dev_list[i]) == device_name) {
+                found = true;
+                break;
+            }
         }
-        break;
+        if (found) {
+            dev_info = dev_list[i];
+            break;
+        }
     }
-
-    out:
+    if (!dev_info) {
+        printf("No device found");
+        std::abort();
+    }
+    doca_error_t t = doca_dev_open(dev_info, doca_device);
     doca_devinfo_destroy_list(dev_list);
-
-    if (*doca_device == NULL) {
-        DOCA_LOG_ERR("Couldn't get DOCA device");
-        return DOCA_ERROR_NOT_FOUND;
-    }
-
-    return result;
+    return t;
 }
 
 doca_error_t allocate_rdma_resources(struct rdma_config *cfg,
@@ -460,7 +560,9 @@ doca_error_t allocate_rdma_resources(struct rdma_config *cfg,
     resources->num_remaining_tasks = 0;
 
     /* Open DOCA device */
-    result = open_doca_device(cfg->device_name, func, &(resources->doca_device));
+    std::string device_name(cfg->device_name);
+    /* Open DOCA device */
+    result = open_dpa_device(cfg->device_name, &(resources->doca_device));
     if (result != DOCA_SUCCESS) {
         DOCA_LOG_ERR("Failed to open DOCA device: %s", doca_error_get_descr(result));
         return result;
